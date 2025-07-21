@@ -1,4 +1,3 @@
-# 📦 Imports
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import KFold
@@ -12,17 +11,14 @@ from catboost import CatBoostRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
-# 📁 Load Data (local folder version)
 train = pd.read_csv("train.csv")
 test = pd.read_csv("test.csv")
 sample_submission = pd.read_csv("sample_solution.csv")
 
-# 🎯 Columns
 blend_cols = [col for col in train.columns if 'fraction' in col.lower()]
 component_cols = [col for col in train.columns if 'Component' in col and 'Property' in col]
 target_cols = [f'BlendProperty{i}' for i in range(1, 11)]
 
-# ⚙ Weighted Average Features
 def add_weighted_features(df):
     df = df.copy()
     for i in range(1, 11):
@@ -32,7 +28,6 @@ def add_weighted_features(df):
         df[f"Weighted_Property{i}"] = weighted_sum
     return df
 
-# 🔁 Nonlinear Features
 def add_nonlinear_features(df):
     df = df.copy()
     for col in blend_cols + component_cols:
@@ -44,18 +39,15 @@ def add_nonlinear_features(df):
         df[f"log_{col}"] = np.log1p(df[col])
     return df
 
-# 🧪 Feature Engineering
 train = add_weighted_features(train)
 test = add_weighted_features(test)
 train = add_nonlinear_features(train)
 test = add_nonlinear_features(test)
 
-# 📊 Features
 weighted_cols = [f"Weighted_Property{i}" for i in range(1, 11)]
 nonlinear_cols = [col for col in train.columns if 'squared' in col or '_x' in col or 'log_' in col]
 all_features = blend_cols + component_cols + weighted_cols + nonlinear_cols
 
-# 🧼 Clean Data
 train = train[all_features + target_cols]
 train.fillna(train.median(numeric_only=True), inplace=True)
 test = test[all_features]
@@ -65,15 +57,12 @@ X = train[all_features]
 y = train[target_cols]
 X_test = test[all_features]
 
-# 📐 Scaling
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 X_test_scaled = scaler.transform(X_test)
 
-# 🔁 KFold
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
-# ⚙️ Base Models
 xgb = MultiOutputRegressor(XGBRegressor(
     n_estimators=1000, learning_rate=0.05, max_depth=5,
     subsample=0.8, colsample_bytree=0.8, tree_method="hist", random_state=42
@@ -83,7 +72,6 @@ catboost = MultiOutputRegressor(CatBoostRegressor(
     iterations=1000, learning_rate=0.05, depth=5, verbose=0, random_state=42
 ), n_jobs=-1)
 
-# 🧠 Stacking storage
 oof_xgb = np.zeros_like(y)
 oof_cat = np.zeros_like(y)
 test_preds_xgb = np.zeros((X_test.shape[0], y.shape[1]))
@@ -118,9 +106,8 @@ val_preds = meta_model.predict(meta_X)
 val_mape = mean_absolute_percentage_error(y, val_preds)
 print(f"\n📉 Final Validation MAPE (Meta: NuSVR RBF Kernel): {val_mape:.4f}")
 
-# 📤 Submission
 final_test_preds = meta_model.predict(meta_test_X)
 submission = sample_submission.copy()
 submission.iloc[:, 1:] = final_test_preds
-submission.to_csv("nusvr_rbf_meta_submission.csv", index=False)
-print("✅ Submission saved as 'new.csv'")
+submission.to_csv("new.csv", index=False)
+print(" Submission saved as 'new.csv'")
