@@ -1,4 +1,3 @@
-# 📦 Imports
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import KFold
@@ -13,19 +12,14 @@ from lightgbm import LGBMRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
-
-# 📁 Load Data 
 train = pd.read_csv("train.csv")
 test = pd.read_csv("test.csv")
 sample_submission = pd.read_csv("sample_solution.csv")
 
-
-# 🎯 Columns
 blend_cols = [col for col in train.columns if 'fraction' in col.lower()]
 component_cols = [col for col in train.columns if 'Component' in col and 'Property' in col]
 target_cols = [f'BlendProperty{i}' for i in range(1, 11)]
 
-# ⚙ Weighted Average Features
 def add_weighted_features(df):
     df = df.copy()
     for i in range(1, 11):
@@ -35,7 +29,6 @@ def add_weighted_features(df):
         df[f"Weighted_Property{i}"] = weighted_sum
     return df
 
-# 🔁 Nonlinear Features
 def add_nonlinear_features(df):
     df = df.copy()
     for col in blend_cols + component_cols:
@@ -47,18 +40,15 @@ def add_nonlinear_features(df):
         df[f"log_{col}"] = np.log1p(df[col])
     return df
 
-# 🧪 Feature Engineering
 train = add_weighted_features(train)
 test = add_weighted_features(test)
 train = add_nonlinear_features(train)
 test = add_nonlinear_features(test)
 
-# 🔢 Features
 weighted_cols = [f"Weighted_Property{i}" for i in range(1, 11)]
 nonlinear_cols = [col for col in train.columns if 'squared' in col or 'x' in col or 'log' in col]
 all_features = blend_cols + component_cols + weighted_cols + nonlinear_cols
 
-# 🧹 Clean Data
 train = train[all_features + target_cols]
 train.fillna(train.median(numeric_only=True), inplace=True)
 test = test[all_features]
@@ -68,15 +58,12 @@ X = train[all_features]
 y = train[target_cols]
 X_test = test[all_features]
 
-# ⚖ Scaling
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 X_test_scaled = scaler.transform(X_test)
 
-# 🔀 KFold
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
-# ⚙ Base Models
 xgb = MultiOutputRegressor(XGBRegressor(
     n_estimators=1000, learning_rate=0.05, max_depth=5,
     subsample=0.8, colsample_bytree=0.8, tree_method="hist", random_state=42
@@ -91,7 +78,6 @@ lgbm = MultiOutputRegressor(LGBMRegressor(
     colsample_bytree=0.8, random_state=42
 ), n_jobs=-1)
 
-# 📦 Stacking Storage
 oof_xgb = np.zeros_like(y)
 oof_cat = np.zeros_like(y)
 oof_lgbm = np.zeros_like(y)
@@ -117,21 +103,17 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_scaled)):
     test_preds_cat += catboost.predict(X_test_scaled) / kf.get_n_splits()
     test_preds_lgbm += lgbm.predict(X_test_scaled) / kf.get_n_splits()
 
-# 🧠 Meta Input
 meta_X = np.concatenate([oof_xgb, oof_cat, oof_lgbm], axis=1)
 meta_test_X = np.concatenate([test_preds_xgb, test_preds_cat, test_preds_lgbm], axis=1)
 
-# 🧠 Meta-Models: Ridge, Lasso, ElasticNet
 ridge = MultiOutputRegressor(make_pipeline(StandardScaler(), Ridge(alpha=1.0)), n_jobs=-1)
 lasso = MultiOutputRegressor(make_pipeline(StandardScaler(), Lasso(alpha=0.001)), n_jobs=-1)
 elastic = MultiOutputRegressor(make_pipeline(StandardScaler(), ElasticNet(alpha=0.001, l1_ratio=0.5)), n_jobs=-1)
 
-# Fit Meta-Models
 ridge.fit(meta_X, y)
 lasso.fit(meta_X, y)
 elastic.fit(meta_X, y)
 
-# Predictions & Ensembling
 ridge_preds = ridge.predict(meta_X)
 lasso_preds = lasso.predict(meta_X)
 elastic_preds = elastic.predict(meta_X)
@@ -140,14 +122,12 @@ val_preds = (ridge_preds + lasso_preds + elastic_preds) / 3
 val_mape = mean_absolute_percentage_error(y, val_preds)
 print(f"\n📉 Final Validation MAPE (Meta: Ridge + Lasso + ElasticNet): {val_mape:.4f}")
 
-# Final Submission Predictions
 ridge_test = ridge.predict(meta_test_X)
 lasso_test = lasso.predict(meta_test_X)
 elastic_test = elastic.predict(meta_test_X)
 
 final_test_preds = (ridge_test + lasso_test + elastic_test) / 3
 
-# 📤 Submission
 submission = sample_submission.copy()
 submission.iloc[:, 1:] = final_test_preds
 submission.to_csv("/kaggle/working/ridge_lasso_elasticnet_lgbm_stack_submission.csv", index=False)
